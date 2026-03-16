@@ -1,10 +1,15 @@
 import requests
 import time
-import os
 from datetime import datetime
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.live import Live
+from rich.text import Text
+
+console = Console()
 
 def get_dhaka_hourly_rain():
-    # Coordinates for Dhaka, Bangladesh
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": 23.7104,
@@ -15,42 +20,67 @@ def get_dhaka_hourly_rain():
     }
 
     try:
-        # Clear the terminal screen (works for Windows and Mac/Linux)
-        os.system('cls' if os.name == 'nt' else 'clear')
-        
         response = requests.get(url, params=params)
         data = response.json()
         
-        current_time = datetime.now().strftime("%Y-%m-%d %I:%M %p")
-        print(f"=== DHAKA RAIN TRACKER ===")
-        print(f"Last Updated: {current_time}")
-        print("-" * 30)
+        if "hourly" not in data:
+            return Panel("[bold red]API Error:[/bold red] Data unavailable.", border_style="red")
 
         hourly_data = data['hourly']
-        found_rain = False
-
-        print("Upcoming Rain Times (Next 24 Hours):")
-        for i in range(len(hourly_data['time'])):
-            prob = hourly_data['precipitation_probability'][i]
-            
-            # Only show hours where probability is 20% or higher
-            if prob >= 20:
-                raw_time = hourly_data['time'][i]
-                # Convert '2026-03-14T18:00' to a readable format
-                clean_time = datetime.strptime(raw_time, "%Y-%m-%dT%H:%M").strftime("%I:%M %p")
-                amount = hourly_data['precipitation'][i]
-                
-                print(f" > {clean_time}: {prob}% chance ({amount}mm)")
-                found_rain = True
+        current_dt = datetime.now()
+        # API uses 2026-03-16T14:00 format
+        current_hour_tag = current_dt.strftime("%Y-%m-%dT%H:00")
         
-        if not found_rain:
-            print("No significant rain expected in the next 24 hours.")
+        title_text = f"Dhaka Rain Forecast — {current_dt.strftime('%a, %b %d, %Y')}"
+        
+        table = Table(title=title_text, title_style="bold cyan", header_style="bold magenta")
+        table.add_column("Time", justify="center")
+        table.add_column("Chance (%)", justify="center")
+        table.add_column("Amount (mm)", justify="center")
+
+        for i in range(len(hourly_data['time'])):
+            raw_time = hourly_data['time'][i]
+            prob = hourly_data['precipitation_probability'][i]
+            amount = hourly_data['precipitation'][i]
+            
+            dt_obj = datetime.strptime(raw_time, "%Y-%m-%dT%H:%M")
+            clean_time = dt_obj.strftime("%I:%M %p")
+            
+            # Use Text objects to avoid the [ / ] tag crashing the script
+            time_text = Text(clean_time)
+            prob_text = Text(f"{prob}%")
+            amount_text = Text(f"{amount}mm")
+
+            # Apply colors
+            if prob > 50:
+                prob_text.stylize("bold red")
+            
+            if amount > 2.0:
+                amount_text.stylize("bold red")
+            elif amount > 0:
+                amount_text.stylize("bold yellow")
+            else:
+                amount_text.stylize("green")
+
+            # Highlight the current hour row
+            row_style = "bold reverse underline" if raw_time == current_hour_tag else ""
+            
+            table.add_row(time_text, prob_text, amount_text, style=row_style)
+        
+        return table
 
     except Exception as e:
-        print(f"Error fetching data: {e}")
+        return Panel(f"[bold red]Error:[/bold red] {str(e)}", border_style="red")
 
 if __name__ == "__main__":
-    while True:
-        get_dhaka_hourly_rain()
-        print("\nRefreshing in 5 minutes... (Press Ctrl+C to stop)")
-        time.sleep(300) # 300 seconds = 5 minutes
+    try:
+        # screen=True works now because we are using proper style application
+        with Live(get_dhaka_hourly_rain(), refresh_per_second=1, screen=True) as live:
+            while True:
+                live.update(get_dhaka_hourly_rain())
+                time.sleep(300)
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        console.print(f"\n[bold red]CRITICAL ERROR:[/bold red] {e}")
+        input("Press Enter to exit...")
