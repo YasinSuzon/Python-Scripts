@@ -7,6 +7,6 @@
 
 ```python --version```
 
-**Step 3: Download Scripts (.py files)**
+**Step 3: Download Scripts** (.py files)
 
 **Step 4: Double click to run**
